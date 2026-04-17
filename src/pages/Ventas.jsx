@@ -1,9 +1,9 @@
 // src/pages/Ventas.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { fetchAppData, insertRecord } from '../services/api';
 import {
   Droplet, Users, Package, Hash,
-  CheckCircle, AlertCircle, ShoppingCart
+  CheckCircle, AlertCircle, ShoppingCart, ChevronDown
 } from 'lucide-react';
 
 const formatCurrency = (val) =>
@@ -17,6 +17,9 @@ export default function Ventas() {
   const [toast, setToast] = useState(null);
 
   const [busquedaCliente, setBusquedaCliente] = useState('');
+  const [dropdownAbierto, setDropdownAbierto] = useState(false);
+  const dropdownRef = useRef(null);
+
   const [formData, setFormData] = useState({
     id_cliente: '',
     id_producto: '',
@@ -45,17 +48,41 @@ export default function Ventas() {
     loadData();
   }, []);
 
-  const handleClienteBuscador = (e) => {
-    const valor = e.target.value;
-    setBusquedaCliente(valor);
-    const encontrado = clientes.find((c) => c.nombre === valor);
-    setFormData((prev) => ({ ...prev, id_cliente: encontrado?.id_cliente || '' }));
+  // Cierra el dropdown al tocar fuera
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setDropdownAbierto(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
+  // Filtra clientes según lo que se escribe
+  const clientesFiltrados = clientes.filter((c) =>
+    c.nombre.toLowerCase().includes(busquedaCliente.toLowerCase())
+  );
+
+  const handleClienteInput = (e) => {
+    setBusquedaCliente(e.target.value);
+    setFormData((prev) => ({ ...prev, id_cliente: '' }));
+    setDropdownAbierto(true);
+  };
+
+  const seleccionarCliente = (cliente) => {
+    setBusquedaCliente(cliente.nombre);
+    setFormData((prev) => ({ ...prev, id_cliente: cliente.id_cliente }));
+    setDropdownAbierto(false);
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     let next = { ...formData, [name]: value };
-
     if (name === 'id_producto') {
       const prod = catalogo.find((p) => p.id_producto.toString() === value);
       const precio = prod ? parseFloat(prod.precio) : 0;
@@ -63,8 +90,7 @@ export default function Ventas() {
       next.total = precio * next.cantidad;
     }
     if (name === 'cantidad') {
-      const cant = parseInt(value) || 0;
-      next.total = next.precio_unitario * cant;
+      next.total = next.precio_unitario * (parseInt(value) || 0);
     }
     setFormData(next);
   };
@@ -79,7 +105,6 @@ export default function Ventas() {
       showToast('error', 'Completá el producto y la cantidad correctamente.');
       return;
     }
-
     setSaving(true);
     try {
       await insertRecord('insertVenta', {
@@ -101,7 +126,6 @@ export default function Ventas() {
     }
   };
 
-  // Producto seleccionado actualmente
   const productoActual = catalogo.find(
     (p) => p.id_producto.toString() === formData.id_producto
   );
@@ -120,7 +144,7 @@ export default function Ventas() {
       {toast && (
         <div className={`
           fixed top-5 right-5 z-50 flex items-center gap-3
-          px-4 py-3 rounded-xl border text-sm font-medium shadow-lg transition-all duration-300
+          px-4 py-3 rounded-xl border text-sm font-medium shadow-lg
           ${toast.type === 'success'
             ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
             : 'bg-red-50 border-red-200 text-red-800'}
@@ -140,50 +164,78 @@ export default function Ventas() {
           </div>
           <h1 className="text-xl font-semibold text-gray-800">Registrar Nueva Venta</h1>
         </div>
-        <p className="text-sm text-gray-400 ml-12">
+        <p className="text-sm text-gray-500 ml-12">
           Completá los datos para registrar una venta en el sistema.
         </p>
       </div>
 
-      {/* Card formulario */}
+      {/* Card */}
       <form
         onSubmit={handleSubmit}
-        className="max-w-2xl bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+        className="max-w-2xl bg-white rounded-2xl border border-gray-100 shadow-sm overflow-visible"
       >
-        <div className="h-1 w-full bg-gradient-to-r from-blue-400 to-blue-600" />
+        <div className="h-1 w-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-t-2xl" />
 
         <div className="p-6 md:p-8 space-y-6">
 
-          {/* Buscador de cliente */}
-          <div className="space-y-1.5">
+          {/* Buscador cliente — custom dropdown */}
+          <div className="space-y-1.5" ref={dropdownRef}>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Cliente
             </label>
             <div className="relative">
-              <Users size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" />
+              <Users size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-10" />
               <input
-                list="lista-clientes"
+                type="text"
                 placeholder="Buscá por nombre o razón social..."
                 value={busquedaCliente}
-                onChange={handleClienteBuscador}
+                onChange={handleClienteInput}
+                onFocus={() => setDropdownAbierto(true)}
                 autoComplete="off"
-                required
-                className="w-full pl-10 pr-4 py-3 text-sm bg-gray-50 border border-gray-200 rounded-xl
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck="false"
+                className="w-full pl-10 pr-4 py-3 text-base bg-gray-50 border border-gray-200 rounded-xl
                   focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400
-                  placeholder:text-gray-300 text-gray-700 transition-all"
+                  placeholder:text-gray-300 text-gray-800 transition-all"
               />
-              <datalist id="lista-clientes">
-                {clientes.map((c) => (
-                  <option key={c.id_cliente} value={c.nombre} />
-                ))}
-              </datalist>
+
+              {/* Dropdown lista clientes */}
+              {dropdownAbierto && clientesFiltrados.length > 0 && (
+                <ul className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200
+                  rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto scrollbar-thin">
+                  {clientesFiltrados.map((c) => (
+                    <li
+                      key={c.id_cliente}
+                      onMouseDown={() => seleccionarCliente(c)}
+                      onTouchEnd={() => seleccionarCliente(c)}
+                      className="px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700
+                        cursor-pointer transition-colors first:rounded-t-xl last:rounded-b-xl
+                        border-b border-gray-50 last:border-0"
+                    >
+                      <p className="font-medium">{c.nombre}</p>
+                      {c.direccion && (
+                        <p className="text-xs text-gray-400 mt-0.5">{c.direccion}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Sin resultados */}
+              {dropdownAbierto && busquedaCliente && clientesFiltrados.length === 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200
+                  rounded-xl shadow-lg z-50 px-4 py-3">
+                  <p className="text-sm text-gray-400">Sin resultados para "{busquedaCliente}"</p>
+                </div>
+              )}
             </div>
 
-            {/* Feedback cliente */}
+            {/* Feedback */}
             <div className="h-5 flex items-center">
               {busquedaCliente && !formData.id_cliente && (
                 <p className="text-[11px] text-red-400 font-medium flex items-center gap-1">
-                  <AlertCircle size={11} /> Cliente no encontrado — seleccioná uno de la lista.
+                  <AlertCircle size={11} /> Seleccioná un cliente de la lista.
                 </p>
               )}
               {formData.id_cliente && (
@@ -196,21 +248,20 @@ export default function Ventas() {
 
           {/* Producto + Cantidad */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Producto
               </label>
               <div className="relative">
-                <Package size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" />
+                <Package size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 <select
                   name="id_producto"
                   value={formData.id_producto}
                   onChange={handleChange}
                   required
-                  className="w-full pl-10 pr-8 py-3 text-sm bg-gray-50 border border-gray-200 rounded-xl
+                  className="w-full pl-10 pr-8 py-3 text-base bg-gray-50 border border-gray-200 rounded-xl
                     focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400
-                    text-gray-700 appearance-none cursor-pointer transition-all"
+                    text-gray-800 appearance-none cursor-pointer transition-all"
                 >
                   <option value="">Seleccioná un producto</option>
                   {catalogo.map((p) => (
@@ -219,11 +270,7 @@ export default function Ventas() {
                     </option>
                   ))}
                 </select>
-                <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M2.5 4.5L6 8L9.5 4.5" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
+                <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>
             </div>
 
@@ -232,7 +279,7 @@ export default function Ventas() {
                 Cantidad
               </label>
               <div className="relative">
-                <Hash size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-300" />
+                <Hash size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="number"
                   name="cantidad"
@@ -240,29 +287,27 @@ export default function Ventas() {
                   value={formData.cantidad}
                   onChange={handleChange}
                   required
-                  className="w-full pl-10 pr-4 py-3 text-sm bg-gray-50 border border-gray-200 rounded-xl
+                  className="w-full pl-10 pr-4 py-3 text-base bg-gray-50 border border-gray-200 rounded-xl
                     focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400
-                    text-gray-700 transition-all"
+                    text-gray-800 transition-all"
                 />
               </div>
             </div>
           </div>
 
-          {/* Resumen de precio — solo si hay producto seleccionado */}
+          {/* Resumen precio */}
           {productoActual ? (
             <div className="rounded-xl border border-gray-100 bg-gray-50 overflow-hidden">
-              {/* Detalle unitario */}
               <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100">
-                <span className="text-xs text-gray-400 font-medium">Precio unitario</span>
-                <span className="text-sm font-semibold text-gray-600">
+                <span className="text-xs text-gray-500 font-medium">Precio unitario</span>
+                <span className="text-sm font-semibold text-gray-700">
                   {formatCurrency(formData.precio_unitario)}
                 </span>
               </div>
               <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100">
-                <span className="text-xs text-gray-400 font-medium">Cantidad</span>
-                <span className="text-sm font-semibold text-gray-600">{formData.cantidad} u.</span>
+                <span className="text-xs text-gray-500 font-medium">Cantidad</span>
+                <span className="text-sm font-semibold text-gray-700">{formData.cantidad} u.</span>
               </div>
-              {/* Total destacado */}
               <div className="flex justify-between items-center px-5 py-4 bg-blue-600">
                 <span className="text-sm font-semibold text-blue-100">Total a cobrar</span>
                 <span className="text-xl font-semibold text-white">
@@ -272,7 +317,7 @@ export default function Ventas() {
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-5 py-6 text-center">
-              <p className="text-xs text-gray-300 font-medium">
+              <p className="text-xs text-gray-400 font-medium">
                 Seleccioná un producto para ver el resumen de precio.
               </p>
             </div>
