@@ -4,10 +4,11 @@ import { fetchAppData } from '../services/api';
 import {
   Droplet, GlassWater, Star, FileDown,
   Store, Truck, DollarSign, Calendar,
-  TrendingUp, ClipboardList
+  TrendingUp, ClipboardList, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
-const ID_CLIENTE_LOCAL = 'C-1776440612447';
+// FIX: ID real del cliente local según la base de datos
+const ID_CLIENTE_LOCAL = 'C-1776454908189';
 
 const formatFechaPantalla = (fechaIso) => {
   if (!fechaIso) return '';
@@ -15,13 +16,18 @@ const formatFechaPantalla = (fechaIso) => {
   return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
 };
 
+// FIX: Manejo robusto de fechas ISO para evitar desfases de zona horaria
 const getLocalDataString = (date) => {
+  if (!date) return '';
+  if (typeof date === 'string' && date.includes('T')) {
+    return date.split('T')[0]; // Extrae "YYYY-MM-DD" directo del string ISO
+  }
   const d = new Date(date);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
 const formatCurrency = (val) =>
-  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(val);
+  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(val);
 
 // ── Componentes reutilizables ──────────────────────────────────────────────
 
@@ -85,6 +91,10 @@ export default function Dashboard() {
   const [fechaInicio, setFechaInicio] = useState(primerDiaMesStr);
   const [fechaFin, setFechaFin] = useState(hoyStr);
 
+  // Estados para paginación
+  const [paginaActual, setPaginaActual] = useState(1);
+  const itemsPorPagina = 5;
+
   useEffect(() => {
     const cargarDatos = async () => {
       try {
@@ -101,22 +111,21 @@ export default function Dashboard() {
     cargarDatos();
   }, []);
 
+  // Resetear página a 1 cuando cambian los filtros
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [tipoFiltro, fechaSeleccionada, fechaInicio, fechaFin]);
+
+  // ── Cálculo de métricas dinámicas según el filtro ──
   const metricas = useMemo(() => {
-    let ingresosHoyTotal = 0, ingresosHoyLocal = 0, ingresosHoyVisitas = 0;
-    let ingresosFiltrados = 0, ventasTotales = 0;
+    let ingresosFiltrados = 0, ingresosLocal = 0, ingresosVisitas = 0;
+    let ventasTotales = 0;
     let countBidones = 0, countDispensers = 0, countPromos = 0;
 
     ventas.forEach((venta) => {
       const fechaVentaStr = getLocalDataString(venta.fecha);
       const totalVenta = parseFloat(venta.total) || 0;
       const cantidad = parseInt(venta.cantidad) || 0;
-
-      if (fechaVentaStr === hoyStr) {
-        ingresosHoyTotal += totalVenta;
-        venta.id_cliente === ID_CLIENTE_LOCAL
-          ? (ingresosHoyLocal += totalVenta)
-          : (ingresosHoyVisitas += totalVenta);
-      }
 
       const entraEnFiltro =
         tipoFiltro === 'rango'
@@ -126,6 +135,14 @@ export default function Dashboard() {
       if (entraEnFiltro) {
         ingresosFiltrados += totalVenta;
         ventasTotales++;
+        
+        // FIX: Acumular Local vs Visita BASADO EN EL PERÍODO SELECCIONADO
+        if (venta.id_cliente === ID_CLIENTE_LOCAL) {
+          ingresosLocal += totalVenta;
+        } else {
+          ingresosVisitas += totalVenta;
+        }
+
         const producto = catalogo.find(
           (p) => p.id_producto.toString() === venta.id_producto.toString()
         );
@@ -138,14 +155,15 @@ export default function Dashboard() {
     });
 
     return {
-      ingresosHoyTotal, ingresosHoyLocal, ingresosHoyVisitas,
-      ingresosFiltrados, ventasTotales,
+      ingresosFiltrados, ingresosLocal, ingresosVisitas,
+      ventasTotales,
       countBidones, countDispensers, countPromos,
       totalArticulos: countBidones + countDispensers + countPromos || 1,
     };
-  }, [ventas, catalogo, tipoFiltro, fechaInicio, fechaFin, fechaSeleccionada, hoyStr]);
+  }, [ventas, catalogo, tipoFiltro, fechaInicio, fechaFin, fechaSeleccionada]);
 
-  const ultimasVentas = useMemo(() => {
+  // ── Filtrado y Paginado de Ventas ──
+  const ventasFiltradas = useMemo(() => {
     return [...ventas]
       .filter((v) => {
         const f = getLocalDataString(v.fecha);
@@ -153,9 +171,14 @@ export default function Dashboard() {
           ? f === fechaSeleccionada
           : f >= fechaInicio && f <= fechaFin;
       })
-      .reverse()
-      .slice(0, 5);
+      .reverse();
   }, [ventas, tipoFiltro, fechaSeleccionada, fechaInicio, fechaFin]);
+
+  const totalPaginas = Math.max(1, Math.ceil(ventasFiltradas.length / itemsPorPagina));
+  const ventasPaginadas = ventasFiltradas.slice(
+    (paginaActual - 1) * itemsPorPagina,
+    paginaActual * itemsPorPagina
+  );
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
@@ -229,25 +252,25 @@ export default function Dashboard() {
       {/* ── KPIs ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
 
-        {/* Card grande — Ingresos hoy */}
+        {/* Card grande — Dinámica según filtro */}
         <div className="lg:col-span-2 bg-blue-600 rounded-2xl p-6 text-white relative overflow-hidden">
           <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-widest mb-1">
-            Ingresos totales hoy
+            {tipoFiltro === 'dia' ? 'Ingresos del día' : 'Ingresos del período'}
           </p>
-          <p className="text-4xl font-semibold mb-6">{formatCurrency(metricas.ingresosHoyTotal)}</p>
+          <p className="text-4xl font-semibold mb-6">{formatCurrency(metricas.ingresosFiltrados)}</p>
 
           <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-5">
             <div>
               <p className="text-[10px] text-blue-300 uppercase font-semibold mb-1 flex items-center gap-1">
                 <Store size={11} /> Venta local
               </p>
-              <p className="text-lg font-semibold">{formatCurrency(metricas.ingresosHoyLocal)}</p>
+              <p className="text-lg font-semibold">{formatCurrency(metricas.ingresosLocal)}</p>
             </div>
             <div>
               <p className="text-[10px] text-blue-300 uppercase font-semibold mb-1 flex items-center gap-1">
-                <Truck size={11} /> Visitas
+                <Truck size={11} /> Visitas (Reparto)
               </p>
-              <p className="text-lg font-semibold">{formatCurrency(metricas.ingresosHoyVisitas)}</p>
+              <p className="text-lg font-semibold">{formatCurrency(metricas.ingresosVisitas)}</p>
             </div>
           </div>
 
@@ -258,8 +281,8 @@ export default function Dashboard() {
           icon={Calendar}
           iconBg="bg-blue-50"
           iconColor="text-blue-500"
-          label="Total período"
-          value={formatCurrency(metricas.ingresosFiltrados)}
+          label="Operaciones"
+          value={metricas.ventasTotales}
           footnote={<><TrendingUp size={11} /> Ventas confirmadas</>}
           footnoteColor="text-emerald-500"
         />
@@ -268,9 +291,9 @@ export default function Dashboard() {
           icon={ClipboardList}
           iconBg="bg-amber-50"
           iconColor="text-amber-500"
-          label="Operaciones"
-          value={metricas.ventasTotales}
-          footnote="En el rango seleccionado"
+          label="Ticket Promedio"
+          value={metricas.ventasTotales > 0 ? formatCurrency(metricas.ingresosFiltrados / metricas.ventasTotales) : '$0'}
+          footnote="Por operación"
         />
       </div>
 
@@ -290,19 +313,19 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Últimas ventas */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6">
-          <div className="flex items-center justify-between mb-6">
+        {/* Registro de ventas con paginación */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 flex flex-col">
+          <div className="p-6 pb-0 flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
               <ClipboardList size={16} className="text-blue-500" />
-              Últimas ventas
+              Detalle de operaciones
             </h2>
             <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-3 py-1 rounded-full uppercase tracking-wide">
-              {ultimasVentas.length} registros
+              {ventasFiltradas.length} registros
             </span>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto flex-grow px-6">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-gray-100">
@@ -317,19 +340,19 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {ultimasVentas.map((v, i) => {
+                {ventasPaginadas.map((v, i) => {
                   const cliente = clientes.find((c) => c.id_cliente === v.id_cliente);
                   const esLocal = v.id_cliente === ID_CLIENTE_LOCAL;
                   return (
-                    <tr key={i} className="hover:bg-gray-50/60 transition-colors">
+                    <tr key={v.id_venta || i} className="hover:bg-gray-50/60 transition-colors">
                       <td className="py-3.5 text-xs text-gray-500 font-medium">
                         {formatFechaPantalla(v.fecha)}
                       </td>
                       <td className="py-3.5">
                         <p className="text-xs font-semibold text-gray-800">
-                          {cliente?.nombre || 'Cliente Local'}
+                          {cliente?.nombre || 'Cliente Final'}
                         </p>
-                        <p className="text-[10px] text-gray-400">
+                        <p className={`text-[10px] ${esLocal ? 'text-blue-400' : 'text-gray-400'} font-medium`}>
                           {esLocal ? 'Venta en local' : 'Entrega a domicilio'}
                         </p>
                       </td>
@@ -342,16 +365,41 @@ export default function Dashboard() {
                   );
                 })}
 
-                {ultimasVentas.length === 0 && (
+                {ventasPaginadas.length === 0 && (
                   <tr>
                     <td colSpan={3} className="py-10 text-center text-sm text-gray-300">
-                      Sin ventas en el período seleccionado.
+                      Sin operaciones en este período.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
+
+          {/* Controles de Paginación */}
+          {totalPaginas > 1 && (
+            <div className="border-t border-gray-100 p-4 flex items-center justify-between bg-gray-50/50 rounded-b-2xl">
+              <span className="text-xs text-gray-400 font-medium">
+                Página {paginaActual} de {totalPaginas}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
+                  disabled={paginaActual === 1}
+                  className="p-1.5 rounded-lg border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
+                  disabled={paginaActual === totalPaginas}
+                  className="p-1.5 rounded-lg border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
