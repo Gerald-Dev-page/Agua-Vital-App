@@ -10,19 +10,38 @@ import {
 // FIX: ID real del cliente local según la base de datos
 const ID_CLIENTE_LOCAL = 'C-1776454908189';
 
-const formatFechaPantalla = (fechaIso) => {
-  if (!fechaIso) return '';
-  const d = new Date(fechaIso);
+const formatFechaPantalla = (fechaRaw) => {
+  if (!fechaRaw) return '';
+  
+  // 1. Si viene con el formato texto limpio "YYYY-MM-DD HH:mm:ss"
+  if (typeof fechaRaw === 'string' && fechaRaw.includes(' ') && !fechaRaw.includes('T')) {
+    const datePart = fechaRaw.split(' ')[0]; // Nos quedamos con "2026-05-02"
+    const [year, month, day] = datePart.split('-');
+    return `${day}-${month}-${year}`;
+  }
+  
+  // 2. Si viene como string de Google (con la T) o es un objeto Date
+  const d = new Date(fechaRaw);
+  if (isNaN(d.getTime())) return fechaRaw;
+  
   return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
 };
 
 // FIX: Manejo robusto de fechas ISO para evitar desfases de zona horaria
 const getLocalDataString = (date) => {
   if (!date) return '';
-  if (typeof date === 'string' && date.includes('T')) {
-    return date.split('T')[0]; // Extrae "YYYY-MM-DD" directo del string ISO
+
+  // 1. Si la fecha viene en el formato limpio de texto ("2026-05-02 23:24:38")
+  if (typeof date === 'string' && date.includes(' ') && !date.includes('T')) {
+    return date.split(' ')[0]; 
   }
+
+  // 2. Si viene como string ISO de Google ("2026-05-03T01:49:51.807Z") o es new Date()
   const d = new Date(date);
+  
+  if (isNaN(d.getTime())) return ''; 
+  
+  // Devolvemos el día calculado en hora local
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
@@ -136,7 +155,6 @@ export default function Dashboard() {
         ingresosFiltrados += totalVenta;
         ventasTotales++;
         
-        // FIX: Acumular Local vs Visita BASADO EN EL PERÍODO SELECCIONADO
         if (venta.id_cliente === ID_CLIENTE_LOCAL) {
           ingresosLocal += totalVenta;
         } else {
