@@ -6,14 +6,16 @@ import {
   Droplet,
   Package,
   Users,
+  Store // <-- Agregamos el ícono para el local
 } from 'lucide-react';
 
 export default function Sidebar({ currentPage, setCurrentPage }) {
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
-    { id: 'ventas',    label: 'Ventas',    Icon: Droplet },
-    { id: 'productos', label: 'Productos', Icon: Package },
-    { id: 'clientes',  label: 'Clientes',  Icon: Users },
+    { id: 'dashboard',    label: 'Dashboard',    Icon: LayoutDashboard },
+    { id: 'ventas-local', label: 'Ventas Local', Icon: Store }, // <-- Nueva vista
+    { id: 'ventas',       label: 'Ventas',       Icon: Droplet },
+    { id: 'productos',    label: 'Productos',    Icon: Package },
+    { id: 'clientes',     label: 'Clientes',     Icon: Users },
   ];
 
   return (
@@ -82,7 +84,7 @@ export default function Sidebar({ currentPage, setCurrentPage }) {
 
               {/* Label móvil */}
               <span className={`
-                mt-1 text-[10px] tracking-wide md:hidden
+                mt-1 text-[10px] tracking-wide md:hidden whitespace-nowrap
                 ${isActive ? 'font-semibold text-blue-700' : 'font-medium text-gray-600'}
               `}>
                 {label}
