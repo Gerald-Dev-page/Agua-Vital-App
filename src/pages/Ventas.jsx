@@ -1,373 +1,239 @@
 // src/pages/Ventas.jsx
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { fetchAppData, insertRecord } from '../services/api';
-import {
-  Droplet, Users, Package, Hash,
-  CheckCircle, AlertCircle, ShoppingCart, ChevronDown
-} from 'lucide-react';
+import { Droplet, Package, Zap, Loader2, CheckCircle, AlertCircle, Calculator, X } from 'lucide-react';
+
+const ID_CLIENTE_CASA = 'C-1781124386494'; // Cliente Casa hardcodeado
 
 const formatCurrency = (val) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(val || 0);
 
-// Función para obtener la fecha y hora local manteniendo el formato ISO
 const getLocalISOTime = () => {
   const now = new Date();
   const tzOffset = now.getTimezoneOffset() * 60000;
   return new Date(now.getTime() - tzOffset).toISOString().slice(0, -1);
 };
 
-const FORM_INITIAL = {
-  id_cliente: '',
-  id_producto: '',
-  cantidad: 1,
-  precio_unitario: 0,
-  total: 0,
+const getUnidadesPorPromo = (nombre) => {
+  const match = nombre.match(/^(\d+)/);
+  return match ? parseInt(match[0], 10) : 1;
 };
 
 export default function Ventas() {
-  const [clientes, setClientes] = useState([]);
   const [catalogo, setCatalogo] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState({ show: false, type: 'success', msg: '' });
+  const [procesando, setProcesando] = useState({});
+  const [notificaciones, setNotificaciones] = useState([]);
 
-  const [busquedaCliente, setBusquedaCliente] = useState('');
-  const [dropdownAbierto, setDropdownAbierto] = useState(false);
-  const dropdownRef = useRef(null);
-  const toastTimeout = useRef(null);
-
-  const [formData, setFormData] = useState(FORM_INITIAL);
-
-  const showToast = useCallback((type, msg) => {
-    setToast({ show: true, type, msg });
-    if (toastTimeout.current) clearTimeout(toastTimeout.current);
-    toastTimeout.current = setTimeout(() => setToast({ show: false, type: 'success', msg: '' }), 4000);
-  }, []);
+  const [calcModal, setCalcModal] = useState({ show: false, prod: null, cantidad: '' });
 
   useEffect(() => {
-    return () => {
-      if (toastTimeout.current) clearTimeout(toastTimeout.current);
+    const loadData = async () => {
+      try {
+        const data = await fetchAppData();
+        setCatalogo(data?.catalogo || []);
+      } catch {
+        agregarNotificacion('error', 'Error de conexión.');
+      } finally {
+        setLoading(false);
+      }
     };
-  }, []);
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await fetchAppData();
-      setClientes(data?.clientes || []);
-      setCatalogo(data?.catalogo || []);
-    } catch {
-      showToast('error', 'Error al cargar los datos. Revisá la conexión.');
-    } finally {
-      setLoading(false);
-    }
-  }, [showToast]);
-
-  useEffect(() => {
     loadData();
-  }, [loadData]);
-
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setDropdownAbierto(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
   }, []);
 
-  // ACÁ ESTABA EL BUG: Ahora, si busquedaCliente está vacío, devuelve todos los clientes.
-  const clientesFiltrados = useMemo(() => {
-    if (!busquedaCliente) return clientes;
-    return clientes.filter((c) =>
-      (c.nombre || '').toLowerCase().includes(busquedaCliente.toLowerCase())
-    );
-  }, [clientes, busquedaCliente]);
+  // Filtramos solo los productos de calle (que NO digan "negocio")
+  const productosCalle = useMemo(() =>
+    catalogo.filter(p => !(p.nombre || '').toLowerCase().includes('negocio')),
+    [catalogo]
+  );
 
-  const handleClienteInput = (e) => {
-    setBusquedaCliente(e.target.value);
-    setFormData((prev) => ({ ...prev, id_cliente: '' }));
-    setDropdownAbierto(true);
-  };
+  const agregarNotificacion = useCallback((type, msg) => {
+    const id = crypto.randomUUID();
+    setNotificaciones(prev => [...prev, { id, type, msg }]);
+    setTimeout(() => setNotificaciones(prev => prev.filter(n => n.id !== id)), 3000);
+  }, []);
 
-  const seleccionarCliente = (cliente) => {
-    setBusquedaCliente(cliente.nombre);
-    setFormData((prev) => ({ ...prev, id_cliente: cliente.id_cliente }));
-    setDropdownAbierto(false);
-  };
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => {
-      const next = { ...prev, [name]: value };
-      if (name === 'id_producto') {
-        const prod = catalogo.find((p) => String(p.id_producto) === value);
-        next.precio_unitario = prod ? parseFloat(prod.precio || 0) : 0;
-        next.total = next.precio_unitario * next.cantidad;
-      }
-      if (name === 'cantidad') {
-        const qty = Math.max(1, parseInt(value) || 1);
-        next.cantidad = qty;
-        next.total = next.precio_unitario * qty;
-      }
-      return next;
-    });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formData.id_cliente) {
-      showToast('error', 'Seleccioná un cliente válido de la lista.');
-      return;
-    }
-    if (!formData.id_producto || formData.cantidad <= 0) {
-      showToast('error', 'Completá el producto y la cantidad correctamente.');
-      return;
-    }
-    setSaving(true);
+  const enviarVenta = async (idVenta, prodId, cantidadReal, totalReal, nombre) => {
+    setProcesando(prev => ({ ...prev, [prodId]: (prev[prodId] || 0) + 1 }));
     try {
       await insertRecord('insertVenta', {
-        id_venta: crypto.randomUUID(),
+        id_venta: idVenta,
         fecha: getLocalISOTime(),
-        id_cliente: formData.id_cliente,
-        id_producto: formData.id_producto,
-        cantidad: formData.cantidad,
-        precio_unitario: formData.precio_unitario,
-        total: formData.total,
+        id_cliente: ID_CLIENTE_CASA, // Siempre va a Cliente Casa
+        id_producto: prodId,
+        cantidad: cantidadReal,
+        precio_unitario: totalReal / cantidadReal,
+        total: totalReal,
       });
-      showToast('success', '¡Venta registrada con éxito!');
-      setBusquedaCliente('');
-      setFormData(FORM_INITIAL);
+      agregarNotificacion('success', `${nombre} registrado.`);
     } catch {
-      showToast('error', 'Error al guardar la venta.');
+      agregarNotificacion('error', `Falló el registro de ${nombre}.`);
     } finally {
-      setSaving(false);
+      setProcesando(prev => ({ ...prev, [prodId]: Math.max(0, (prev[prodId] || 1) - 1) }));
     }
   };
 
-  const productoActual = useMemo(() => 
-    catalogo.find((p) => String(p.id_producto) === formData.id_producto),
-    [catalogo, formData.id_producto]
-  );
+  const handleVentaRapida = (producto) => {
+    enviarVenta(crypto.randomUUID(), producto.id_producto, 1, parseFloat(producto.precio), producto.nombre);
+  };
+
+  const handleVentaCalculada = (e) => {
+    e.preventDefault();
+    const { prod, cantidad } = calcModal;
+    const uniPromo = getUnidadesPorPromo(prod.nombre);
+    const cantBidones = parseInt(cantidad, 10);
+    const cantPromos = cantBidones / uniPromo;
+    const totalVenta = cantPromos * parseFloat(prod.precio);
+
+    enviarVenta(crypto.randomUUID(), prod.id_producto, cantPromos, totalVenta, prod.nombre);
+    setCalcModal({ show: false, prod: null, cantidad: '' });
+  };
+
+  // Variables para la vista del modal
+  const uniModal = calcModal.prod ? getUnidadesPorPromo(calcModal.prod.nombre) : 1;
+  const cantIngresada = parseInt(calcModal.cantidad) || 0;
+  const esMultiplo = cantIngresada > 0 && cantIngresada % uniModal === 0;
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
       <div className="w-10 h-10 rounded-full border-2 border-blue-200 border-t-blue-500 animate-spin" />
-      <p className="text-sm font-medium text-gray-400 animate-pulse">Cargando sistema...</p>
+      <p className="text-sm font-medium text-gray-400 animate-pulse">Cargando catálogo...</p>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-8 md:px-16 md:py-10 max-w-4xl mx-auto w-full">
+    <div className="min-h-screen bg-gray-100 px-4 py-6 md:px-10 pb-24 relative">
 
-      {toast.show && (
-        <div className={`
-          fixed top-5 right-5 z-50 flex items-center gap-3
-          px-4 py-3 rounded-xl border text-sm font-medium shadow-lg animate-fade-in-up
-          ${toast.type === 'success'
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-            : 'bg-red-50 border-red-200 text-red-800'}
-        `}>
-          {toast.type === 'success'
-            ? <CheckCircle size={16} className="text-emerald-500 shrink-0" />
-            : <AlertCircle size={16} className="text-red-400 shrink-0" />}
-          {toast.msg}
-        </div>
-      )}
-
-      <div className="max-w-2xl mb-8">
-        <div className="flex items-center gap-3 mb-1">
-          <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
-            <Droplet size={18} className="text-blue-600" />
-          </div>
-          <h1 className="text-xl font-semibold text-gray-800">Registrar Nueva Venta</h1>
-        </div>
-        <p className="text-sm text-gray-500 ml-12">
-          Completá los datos para registrar una venta en el sistema.
-        </p>
-      </div>
-
-      <form
-        onSubmit={handleSubmit}
-        className="max-w-2xl bg-white rounded-2xl border border-gray-100 shadow-sm overflow-visible"
-      >
-        <div className="h-1 w-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-t-2xl" />
-
-        <div className="p-6 md:p-8 space-y-6">
-
-          <div className="space-y-1.5" ref={dropdownRef}>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Cliente
-            </label>
-            <div className="relative">
-              <Users size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-10" />
-              <input
-                type="text"
-                placeholder="Buscá por nombre o razón social..."
-                value={busquedaCliente}
-                onChange={handleClienteInput}
-                onFocus={() => setDropdownAbierto(true)}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck="false"
-                className="w-full pl-10 pr-4 py-3 text-base bg-gray-50 border border-gray-200 rounded-xl
-                  focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400
-                  placeholder:text-gray-300 text-gray-800 transition-all"
-              />
-
-              {dropdownAbierto && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200
-                  rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto scrollbar-thin">
-                  {clientesFiltrados.length > 0 ? (
-                    <ul>
-                      {clientesFiltrados.map((c) => (
-                        <li
-                          key={c.id_cliente}
-                          onMouseDown={() => seleccionarCliente(c)}
-                          onTouchEnd={() => seleccionarCliente(c)}
-                          className="px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700
-                            cursor-pointer transition-colors border-b border-gray-50 last:border-0"
-                        >
-                          <p className="font-medium">{c.nombre}</p>
-                          {c.direccion && (
-                            <p className="text-xs text-gray-400 mt-0.5">{c.direccion}</p>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+      {/* Modal Calculadora */}
+      {calcModal.show && calcModal.prod && (
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <div>
+                <h2 className="text-sm font-bold text-gray-800">Cantidad Entregada</h2>
+                <p className="text-xs text-blue-600 font-medium">{calcModal.prod.nombre}</p>
+              </div>
+              <button onClick={() => setCalcModal({ show: false, prod: null, cantidad: '' })} className="p-2 text-gray-400 hover:text-red-500 bg-white rounded-full shadow-sm">
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleVentaCalculada} className="p-5 space-y-5">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block text-center">
+                  Bidones físicos entregados
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  autoFocus
+                  placeholder={`Ej: ${uniModal * 2}`}
+                  value={calcModal.cantidad}
+                  onChange={e => setCalcModal({...calcModal, cantidad: e.target.value})}
+                  className="w-full px-4 py-4 text-3xl font-black text-center bg-gray-50 border-2 border-gray-200 rounded-2xl focus:border-blue-500 outline-none text-gray-800"
+                />
+              </div>
+              {calcModal.cantidad && (
+                <div className={`p-4 rounded-2xl text-center ${esMultiplo ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>
+                  {esMultiplo ? (
+                    <>
+                      <p className="text-xs font-semibold uppercase opacity-80 mb-1">Total a cobrar</p>
+                      <p className="text-2xl font-black">{formatCurrency((cantIngresada / uniModal) * calcModal.prod.precio)}</p>
+                    </>
                   ) : (
-                    <div className="px-4 py-3">
-                      <p className="text-sm text-gray-400">Sin resultados para "{busquedaCliente}"</p>
-                    </div>
+                    <p className="text-xs font-bold">¡Ojo! Debe ser múltiplo de {uniModal}.</p>
                   )}
                 </div>
               )}
-            </div>
-
-            <div className="h-5 flex items-center">
-              {busquedaCliente && !formData.id_cliente && (
-                <p className="text-[11px] text-red-400 font-medium flex items-center gap-1">
-                  <AlertCircle size={11} /> Seleccioná un cliente de la lista.
-                </p>
-              )}
-              {formData.id_cliente && (
-                <p className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
-                  <CheckCircle size={11} /> Cliente vinculado correctamente.
-                </p>
-              )}
-            </div>
+              <button
+                type="submit"
+                disabled={!esMultiplo}
+                className="w-full bg-blue-600 active:bg-blue-700 text-white font-bold py-4 rounded-2xl transition-colors disabled:opacity-50"
+              >
+                Registrar Entrega
+              </button>
+            </form>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Producto
-              </label>
-              <div className="relative">
-                <Package size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                <select
-                  name="id_producto"
-                  value={formData.id_producto}
-                  onChange={handleChange}
-                  required
-                  className="w-full pl-10 pr-8 py-3 text-base bg-gray-50 border border-gray-200 rounded-xl
-                    focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400
-                    text-gray-800 appearance-none cursor-pointer transition-all"
-                >
-                  <option value="">Seleccioná un producto</option>
-                  {catalogo.map((p) => (
-                    <option key={p.id_producto} value={p.id_producto}>
-                      {p.nombre} — {p.tipo}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Cantidad
-              </label>
-              <div className="relative">
-                <Hash size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="number"
-                  name="cantidad"
-                  min="1"
-                  value={formData.cantidad}
-                  onChange={handleChange}
-                  required
-                  className="w-full pl-10 pr-4 py-3 text-base bg-gray-50 border border-gray-200 rounded-xl
-                    focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400
-                    text-gray-800 transition-all"
-                />
-              </div>
-            </div>
-          </div>
-
-          {productoActual ? (
-            <div className="rounded-xl border border-gray-100 bg-gray-50 overflow-hidden">
-              <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100">
-                <span className="text-xs text-gray-500 font-medium">Precio unitario</span>
-                <span className="text-sm font-semibold text-gray-700">
-                  {formatCurrency(formData.precio_unitario)}
-                </span>
-              </div>
-              <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100">
-                <span className="text-xs text-gray-500 font-medium">Cantidad</span>
-                <span className="text-sm font-semibold text-gray-700">{formData.cantidad} u.</span>
-              </div>
-              <div className="flex justify-between items-center px-5 py-4 bg-blue-600">
-                <span className="text-sm font-semibold text-blue-100">Total a cobrar</span>
-                <span className="text-xl font-semibold text-white">
-                  {formatCurrency(formData.total)}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-5 py-6 text-center">
-              <p className="text-xs text-gray-400 font-medium">
-                Seleccioná un producto para ver el resumen de precio.
-              </p>
-            </div>
-          )}
-
-          <div className="border-t border-gray-100" />
-
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full flex items-center justify-center gap-2
-              bg-blue-600 hover:bg-blue-700 active:scale-[0.98]
-              text-white text-sm font-semibold
-              py-3 rounded-xl transition-all duration-200
-              disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {saving ? (
-              <>
-                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Registrando venta...
-              </>
-            ) : (
-              <>
-                <ShoppingCart size={16} />
-                Confirmar Venta
-              </>
-            )}
-          </button>
-
         </div>
-      </form>
+      )}
+
+      {/* Notificaciones */}
+      <div className="fixed top-5 right-4 left-4 md:left-auto md:right-5 z-50 flex flex-col gap-2 pointer-events-none">
+        {notificaciones.map(noti => (
+          <div key={noti.id} className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl border text-sm font-bold shadow-xl animate-fade-in-up ${noti.type === 'success' ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-red-500 border-red-600 text-white'}`}>
+            {noti.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+            {noti.msg}
+          </div>
+        ))}
+      </div>
+
+      {/* Header Mobile */}
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-black text-gray-800 flex items-center gap-2 tracking-tight">
+            <Zap size={22} className="text-blue-500 fill-blue-500" /> Reparto en Calle
+          </h1>
+          <p className="text-sm text-gray-500 font-medium">Ventas a Cliente Casa</p>
+        </div>
+        {Object.values(procesando).some(v => v > 0) && (
+          <div className="flex items-center gap-1.5 bg-amber-100 text-amber-700 text-[10px] uppercase font-black px-3 py-2 rounded-full animate-pulse shadow-sm">
+            <Loader2 size={12} className="animate-spin" />
+          </div>
+        )}
+      </div>
+
+      {/* Grid estilo Botonera App */}
+      {productosCalle.length > 0 ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {productosCalle.map((producto) => {
+            const enProceso = (procesando[producto.id_producto] || 0) > 0;
+            const esPromo = producto.tipo === 'Promo';
+
+            return (
+              <div 
+                key={producto.id_producto} 
+                className="relative bg-white rounded-[24px] shadow-sm flex flex-col overflow-hidden border border-gray-100"
+              >
+                {/* Indicador de guardado */}
+                {enProceso && (
+                  <div className="absolute top-3 right-3 bg-amber-400 w-3 h-3 rounded-full animate-pulse border-2 border-white z-10" />
+                )}
+
+                {/* Zona Principal (Venta Rápida 1 Clic) */}
+                <button 
+                  onClick={() => handleVentaRapida(producto)}
+                  className="w-full flex-grow p-5 flex flex-col items-center justify-center gap-2 active:bg-gray-50 transition-colors text-center"
+                >
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-1 ${esPromo ? 'bg-amber-50 text-amber-500' : 'bg-blue-50 text-blue-500'}`}>
+                    {esPromo ? <Package size={24} /> : <Droplet size={24} />}
+                  </div>
+                  
+                  <h3 className="text-sm font-bold text-gray-700 leading-tight line-clamp-2">
+                    {producto.nombre}
+                  </h3>
+                  
+                  <span className={`text-xl font-black ${esPromo ? 'text-amber-600' : 'text-blue-600'}`}>
+                    {formatCurrency(producto.precio)}
+                  </span>
+                </button>
+
+                {/* Botón Calculadora */}
+                <button 
+                  onClick={() => setCalcModal({ show: true, prod: producto, cantidad: '' })}
+                  className="w-full bg-gray-50 py-3 text-xs font-bold text-gray-500 hover:bg-gray-100 active:bg-gray-200 transition-colors flex items-center justify-center gap-1.5 border-t border-gray-100"
+                >
+                  <Calculator size={14} /> Varios
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="bg-white rounded-3xl border border-gray-200 p-8 text-center shadow-sm">
+          <Droplet size={32} className="mx-auto text-gray-300 mb-2" />
+          <p className="text-sm font-bold text-gray-500">Catálogo de reparto vacío</p>
+        </div>
+      )}
+
     </div>
   );
 }
