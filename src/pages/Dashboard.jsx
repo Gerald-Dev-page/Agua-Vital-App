@@ -4,44 +4,31 @@ import { fetchAppData } from '../services/api';
 import {
   Droplet, GlassWater, Star, FileDown,
   Store, Truck, DollarSign, Calendar,
-  TrendingUp, ClipboardList, ChevronLeft, ChevronRight
+  TrendingUp, ClipboardList, ChevronLeft, ChevronRight,
+  Banknote, QrCode, ArrowRightLeft, PieChart
 } from 'lucide-react';
 
-// FIX: ID real del cliente local según la base de datos
 const ID_CLIENTE_LOCAL = 'C-1776454908189';
 
 const formatFechaPantalla = (fechaRaw) => {
   if (!fechaRaw) return '';
-  
-  // 1. Si viene con el formato texto limpio "YYYY-MM-DD HH:mm:ss"
   if (typeof fechaRaw === 'string' && fechaRaw.includes(' ') && !fechaRaw.includes('T')) {
-    const datePart = fechaRaw.split(' ')[0]; // Nos quedamos con "2026-05-02"
+    const datePart = fechaRaw.split(' ')[0]; 
     const [year, month, day] = datePart.split('-');
     return `${day}-${month}-${year}`;
   }
-  
-  // 2. Si viene como string de Google (con la T) o es un objeto Date
   const d = new Date(fechaRaw);
   if (isNaN(d.getTime())) return fechaRaw;
-  
   return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
 };
 
-// FIX: Manejo robusto de fechas ISO para evitar desfases de zona horaria
 const getLocalDataString = (date) => {
   if (!date) return '';
-
-  // 1. Si la fecha viene en el formato limpio de texto ("2026-05-02 23:24:38")
   if (typeof date === 'string' && date.includes(' ') && !date.includes('T')) {
     return date.split(' ')[0]; 
   }
-
-  // 2. Si viene como string ISO de Google ("2026-05-03T01:49:51.807Z") o es new Date()
   const d = new Date(date);
-  
   if (isNaN(d.getTime())) return ''; 
-  
-  // Devolvemos el día calculado en hora local
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
@@ -50,18 +37,19 @@ const formatCurrency = (val) =>
 
 // ── Componentes reutilizables ──────────────────────────────────────────────
 
+// KpiCard más compacta
 function KpiCard({ icon: Icon, iconBg, iconColor, label, value, footnote, footnoteColor = 'text-gray-400' }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-6 flex flex-col justify-between gap-4">
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${iconBg}`}>
-        <Icon size={20} className={iconColor} />
+    <div className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-col justify-between gap-3 shadow-sm">
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${iconBg}`}>
+        <Icon size={18} className={iconColor} />
       </div>
       <div>
-        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-1">{label}</p>
-        <p className="text-2xl font-semibold text-gray-800">{value}</p>
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{label}</p>
+        <p className="text-3xl font-black text-gray-800 tracking-tight">{value}</p>
       </div>
       {footnote && (
-        <p className={`text-[11px] font-medium ${footnoteColor} flex items-center gap-1`}>
+        <p className={`text-[10px] font-bold ${footnoteColor} flex items-center gap-1`}>
           {footnote}
         </p>
       )}
@@ -73,20 +61,17 @@ function BarItem({ label, val, total, color, icon }) {
   const pct = total > 0 ? (val / total) * 100 : 0;
   return (
     <div>
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
-          <span className={`w-6 h-6 rounded-lg ${color} flex items-center justify-center text-white`}>
+      <div className="flex justify-between items-center mb-1.5">
+        <span className="text-xs font-semibold text-gray-700 flex items-center gap-2">
+          <span className={`w-5 h-5 rounded-lg ${color} flex items-center justify-center text-white`}>
             {icon}
           </span>
           {label}
         </span>
-        <span className="text-sm font-semibold text-gray-800">{val} u.</span>
+        <span className="text-xs font-bold text-gray-800">{val} u.</span>
       </div>
-      <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full ${color} transition-all duration-700 ease-out`}
-          style={{ width: `${pct}%` }}
-        />
+      <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+        <div className={`h-full ${color} transition-all duration-700 ease-out`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -110,7 +95,6 @@ export default function Dashboard() {
   const [fechaInicio, setFechaInicio] = useState(primerDiaMesStr);
   const [fechaFin, setFechaFin] = useState(hoyStr);
 
-  // Estados para paginación
   const [paginaActual, setPaginaActual] = useState(1);
   const itemsPorPagina = 5;
 
@@ -130,40 +114,46 @@ export default function Dashboard() {
     cargarDatos();
   }, []);
 
-  // Resetear página a 1 cuando cambian los filtros
   useEffect(() => {
     setPaginaActual(1);
   }, [tipoFiltro, fechaSeleccionada, fechaInicio, fechaFin]);
 
-  // ── Cálculo de métricas dinámicas según el filtro ──
+  // ── Cálculo de métricas dinámicas ──
   const metricas = useMemo(() => {
     let ingresosFiltrados = 0, ingresosLocal = 0, ingresosVisitas = 0;
     let ventasTotales = 0;
     let countBidones = 0, countDispensers = 0, countPromos = 0;
+    
+    // Contadores por Forma de Pago
+    let ingresosEfectivo = 0;
+    let ingresosTransferencia = 0;
+    let ingresosQR = 0;
 
     ventas.forEach((venta) => {
       const fechaVentaStr = getLocalDataString(venta.fecha);
       const totalVenta = parseFloat(venta.total) || 0;
       const cantidad = parseInt(venta.cantidad) || 0;
+      const formaPago = venta.forma_pago || 'No especificada'; 
 
       const entraEnFiltro =
         tipoFiltro === 'rango'
           ? fechaVentaStr >= fechaInicio && fechaVentaStr <= fechaFin
           : fechaVentaStr === fechaSeleccionada;
 
+      // SÍ, Todo se actualiza basado en el filtro de fecha
       if (entraEnFiltro) {
         ingresosFiltrados += totalVenta;
         ventasTotales++;
         
-        if (venta.id_cliente === ID_CLIENTE_LOCAL) {
-          ingresosLocal += totalVenta;
-        } else {
-          ingresosVisitas += totalVenta;
-        }
+        if (venta.id_cliente === ID_CLIENTE_LOCAL) ingresosLocal += totalVenta;
+        else ingresosVisitas += totalVenta;
 
-        const producto = catalogo.find(
-          (p) => p.id_producto.toString() === venta.id_producto.toString()
-        );
+        // Sumamos según forma de pago para ese período
+        if (formaPago === 'Efectivo') ingresosEfectivo += totalVenta;
+        else if (formaPago === 'Transferencia') ingresosTransferencia += totalVenta;
+        else if (formaPago === 'QR') ingresosQR += totalVenta;
+
+        const producto = catalogo.find(p => p.id_producto.toString() === venta.id_producto.toString());
         if (producto) {
           if (producto.tipo === 'Bidón') countBidones += cantidad;
           else if (producto.tipo === 'Dispenser') countDispensers += cantidad;
@@ -174,29 +164,23 @@ export default function Dashboard() {
 
     return {
       ingresosFiltrados, ingresosLocal, ingresosVisitas,
-      ventasTotales,
-      countBidones, countDispensers, countPromos,
+      ventasTotales, countBidones, countDispensers, countPromos,
       totalArticulos: countBidones + countDispensers + countPromos || 1,
+      ingresosEfectivo, ingresosTransferencia, ingresosQR
     };
   }, [ventas, catalogo, tipoFiltro, fechaInicio, fechaFin, fechaSeleccionada]);
 
-  // ── Filtrado y Paginado de Ventas ──
   const ventasFiltradas = useMemo(() => {
     return [...ventas]
       .filter((v) => {
         const f = getLocalDataString(v.fecha);
-        return tipoFiltro === 'dia'
-          ? f === fechaSeleccionada
-          : f >= fechaInicio && f <= fechaFin;
+        return tipoFiltro === 'dia' ? f === fechaSeleccionada : f >= fechaInicio && f <= fechaFin;
       })
       .reverse();
   }, [ventas, tipoFiltro, fechaSeleccionada, fechaInicio, fechaFin]);
 
   const totalPaginas = Math.max(1, Math.ceil(ventasFiltradas.length / itemsPorPagina));
-  const ventasPaginadas = ventasFiltradas.slice(
-    (paginaActual - 1) * itemsPorPagina,
-    paginaActual * itemsPorPagina
-  );
+  const ventasPaginadas = ventasFiltradas.slice((paginaActual - 1) * itemsPorPagina, paginaActual * itemsPorPagina);
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
@@ -206,215 +190,168 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-8 md:px-10">
+    <div className="min-h-screen bg-gray-50 px-4 py-8 md:px-10 pb-24">
 
       {/* ── Header ── */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-            <TrendingUp size={20} className="text-blue-500" />
-            Panel de Rendimiento
+          <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+            <TrendingUp size={20} className="text-blue-500" /> Panel de Rendimiento
           </h1>
-          <p className="text-sm text-gray-400 mt-0.5">Análisis de ventas y gestión de rutas.</p>
         </div>
 
-        {/* Controles de filtro */}
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           <select
-            value={tipoFiltro}
-            onChange={(e) => setTipoFiltro(e.target.value)}
-            className="text-sm text-gray-700 bg-white border border-gray-200 rounded-xl px-3 py-2.5
-              focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 cursor-pointer transition-all"
+            value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value)}
+            className="text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer"
           >
             <option value="dia">Día específico</option>
             <option value="rango">Rango de fechas</option>
           </select>
 
           {tipoFiltro === 'rango' ? (
-            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2">
-              <input
-                type="date"
-                value={fechaInicio}
-                onChange={(e) => setFechaInicio(e.target.value)}
-                className="text-sm text-gray-700 outline-none bg-transparent"
-              />
+            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-1.5">
+              <input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} className="text-sm text-gray-700 outline-none bg-transparent font-medium" />
               <span className="text-gray-300 text-sm">→</span>
-              <input
-                type="date"
-                value={fechaFin}
-                onChange={(e) => setFechaFin(e.target.value)}
-                className="text-sm text-gray-700 outline-none bg-transparent"
-              />
+              <input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} className="text-sm text-gray-700 outline-none bg-transparent font-medium" />
             </div>
           ) : (
-            <input
-              type="date"
-              value={fechaSeleccionada}
-              onChange={(e) => setFechaSeleccionada(e.target.value)}
-              className="text-sm text-gray-700 bg-white border border-gray-200 rounded-xl px-3 py-2.5
-                focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all"
-            />
+            <input type="date" value={fechaSeleccionada} onChange={(e) => setFechaSeleccionada(e.target.value)} className="text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-100" />
           )}
 
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 active:scale-[0.98]
-              text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all duration-200"
-          >
-            <FileDown size={16} />
-            Exportar
+          <button onClick={() => window.print()} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white text-sm font-bold px-3 py-2 rounded-xl transition-all">
+            <FileDown size={16} /> Exportar
           </button>
         </div>
       </div>
 
-      {/* ── KPIs ── */}
+      {/* ── KPIs PRIMERA FILA (TODO EN UNA LÍNEA) ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-
-        {/* Card grande — Dinámica según filtro */}
-        <div className="lg:col-span-2 bg-blue-600 rounded-2xl p-6 text-white relative overflow-hidden">
-          <p className="text-[11px] font-semibold text-blue-200 uppercase tracking-widest mb-1">
-            {tipoFiltro === 'dia' ? 'Ingresos del día' : 'Ingresos del período'}
-          </p>
-          <p className="text-4xl font-semibold mb-6">{formatCurrency(metricas.ingresosFiltrados)}</p>
-
-          <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-5">
+        
+        {/* 1. Recaudación Global */}
+        <div className="bg-blue-600 rounded-2xl p-5 text-white relative overflow-hidden shadow-sm flex flex-col justify-between">
+          <div className="relative z-10">
+            <p className="text-[10px] font-bold text-blue-200 uppercase tracking-widest mb-0.5">
+              {tipoFiltro === 'dia' ? 'Recaudación del día' : 'Recaudación período'}
+            </p>
+            <p className="text-3xl font-black tracking-tight">{formatCurrency(metricas.ingresosFiltrados)}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 border-t border-white/10 pt-3 mt-4 relative z-10">
             <div>
-              <p className="text-[10px] text-blue-300 uppercase font-semibold mb-1 flex items-center gap-1">
-                <Store size={11} /> Venta local
-              </p>
-              <p className="text-lg font-semibold">{formatCurrency(metricas.ingresosLocal)}</p>
+              <p className="text-[9px] text-blue-200 uppercase font-bold flex items-center gap-1"><Store size={10} /> Local</p>
+              <p className="text-sm font-semibold">{formatCurrency(metricas.ingresosLocal)}</p>
             </div>
             <div>
-              <p className="text-[10px] text-blue-300 uppercase font-semibold mb-1 flex items-center gap-1">
-                <Truck size={11} /> Visitas (Reparto)
-              </p>
-              <p className="text-lg font-semibold">{formatCurrency(metricas.ingresosVisitas)}</p>
+              <p className="text-[9px] text-blue-200 uppercase font-bold flex items-center gap-1"><Truck size={10} /> Reparto</p>
+              <p className="text-sm font-semibold">{formatCurrency(metricas.ingresosVisitas)}</p>
             </div>
           </div>
-
-          <DollarSign className="absolute -right-3 -bottom-3 w-32 h-32 text-white/5" />
+          <DollarSign className="absolute -right-4 -bottom-4 w-28 h-28 text-white/10 pointer-events-none" />
         </div>
 
-        <KpiCard
-          icon={Calendar}
-          iconBg="bg-blue-50"
-          iconColor="text-blue-500"
-          label="Operaciones"
-          value={metricas.ventasTotales}
-          footnote={<><TrendingUp size={11} /> Ventas confirmadas</>}
-          footnoteColor="text-emerald-500"
+        {/* 2. Operaciones (KpiCard Compacta) */}
+        <KpiCard 
+          icon={Calendar} iconBg="bg-blue-50" iconColor="text-blue-500" 
+          label="Operaciones" value={metricas.ventasTotales} 
+          footnote={<><TrendingUp size={11} /> Ventas confirmadas</>} footnoteColor="text-emerald-500" 
         />
 
-        <KpiCard
-          icon={ClipboardList}
-          iconBg="bg-amber-50"
-          iconColor="text-amber-500"
-          label="Ticket Promedio"
-          value={metricas.ventasTotales > 0 ? formatCurrency(metricas.ingresosFiltrados / metricas.ventasTotales) : '$0'}
-          footnote="Por operación"
-        />
+        {/* 3. Desglose de Caja (Ocupa 2 columnas para quedar en línea) */}
+        <div className="md:col-span-2 bg-white rounded-2xl border border-gray-100 p-5 flex flex-col shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center"><PieChart size={14} className="text-emerald-500" /></div>
+            <h2 className="text-xs font-bold text-gray-700 uppercase tracking-widest">Desglose de Caja</h2>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-3 flex-grow">
+            <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex flex-col justify-center">
+              <p className="text-[9px] text-gray-400 uppercase font-bold mb-1 flex items-center gap-1"><Banknote size={11} className="text-emerald-500" /> Efectivo</p>
+              <p className="text-lg font-black text-gray-800">{formatCurrency(metricas.ingresosEfectivo)}</p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex flex-col justify-center">
+              <p className="text-[9px] text-gray-400 uppercase font-bold mb-1 flex items-center gap-1"><ArrowRightLeft size={11} className="text-blue-500" /> Transf.</p>
+              <p className="text-lg font-black text-gray-800">{formatCurrency(metricas.ingresosTransferencia)}</p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex flex-col justify-center">
+              <p className="text-[9px] text-gray-400 uppercase font-bold mb-1 flex items-center gap-1"><QrCode size={11} className="text-fuchsia-500" /> QR</p>
+              <p className="text-lg font-black text-gray-800">{formatCurrency(metricas.ingresosQR)}</p>
+            </div>
+          </div>
+        </div>
+
       </div>
 
-      {/* ── Segunda fila ── */}
+      {/* ── SEGUNDA FILA (Productos y Tabla) ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {/* Distribución */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6">
-          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-6">
-            <Droplet size={16} className="text-blue-500" />
-            Distribución de productos
+        {/* Distribución compacta */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+          <h2 className="text-xs font-bold text-gray-700 uppercase tracking-widest flex items-center gap-2 mb-5">
+            <Droplet size={14} className="text-blue-500" /> Distribución de envases
           </h2>
-          <div className="space-y-5">
-            <BarItem label="Bidones"   val={metricas.countBidones}    total={metricas.totalArticulos} color="bg-blue-500"  icon={<Droplet size={12}/>} />
-            <BarItem label="Dispensers" val={metricas.countDispensers} total={metricas.totalArticulos} color="bg-cyan-400"  icon={<GlassWater size={12}/>} />
-            <BarItem label="Promos"    val={metricas.countPromos}     total={metricas.totalArticulos} color="bg-amber-400" icon={<Star size={12}/>} />
+          <div className="space-y-4">
+            <BarItem label="Bidones" val={metricas.countBidones} total={metricas.totalArticulos} color="bg-blue-500" icon={<Droplet size={10}/>} />
+            <BarItem label="Dispensers" val={metricas.countDispensers} total={metricas.totalArticulos} color="bg-cyan-400" icon={<GlassWater size={10}/>} />
+            <BarItem label="Promos" val={metricas.countPromos} total={metricas.totalArticulos} color="bg-amber-400" icon={<Star size={10}/>} />
           </div>
         </div>
 
-        {/* Registro de ventas con paginación */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 flex flex-col">
-          <div className="p-6 pb-0 flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <ClipboardList size={16} className="text-blue-500" />
-              Detalle de operaciones
+        {/* Tabla de ventas */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 flex flex-col shadow-sm">
+          <div className="p-5 pb-0 flex items-center justify-between mb-3">
+            <h2 className="text-xs font-bold text-gray-700 uppercase tracking-widest flex items-center gap-2">
+              <ClipboardList size={14} className="text-blue-500" /> Registro de Operaciones
             </h2>
-            <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-3 py-1 rounded-full uppercase tracking-wide">
-              {ventasFiltradas.length} registros
-            </span>
+            <span className="text-[9px] font-bold text-gray-400 bg-gray-50 border border-gray-100 px-2 py-1 rounded uppercase">{ventasFiltradas.length} total</span>
           </div>
 
-          <div className="overflow-x-auto flex-grow px-6">
+          <div className="overflow-x-auto flex-grow px-5">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {['Fecha', 'Cliente', 'Monto'].map((h) => (
-                    <th
-                      key={h}
-                      className={`pb-3 text-[10px] font-semibold text-gray-400 uppercase tracking-widest ${h === 'Monto' ? 'text-right' : ''}`}
-                    >
-                      {h}
-                    </th>
-                  ))}
+                  <th className="pb-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Fecha</th>
+                  <th className="pb-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Cliente / Zona</th>
+                  <th className="pb-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest text-right">Monto / Pago</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {ventasPaginadas.map((v, i) => {
                   const cliente = clientes.find((c) => c.id_cliente === v.id_cliente);
                   const esLocal = v.id_cliente === ID_CLIENTE_LOCAL;
+                  const formaPago = v.forma_pago || 'N/A';
+                  
                   return (
                     <tr key={v.id_venta || i} className="hover:bg-gray-50/60 transition-colors">
-                      <td className="py-3.5 text-xs text-gray-500 font-medium">
-                        {formatFechaPantalla(v.fecha)}
+                      <td className="py-3 text-xs text-gray-500 font-medium">{formatFechaPantalla(v.fecha)}</td>
+                      <td className="py-3">
+                        <p className="text-xs font-bold text-gray-800">{cliente?.nombre || 'Cliente Casa'}</p>
+                        <p className={`text-[9px] ${esLocal ? 'text-blue-500' : 'text-amber-500'} font-bold uppercase mt-0.5`}>{esLocal ? 'Mostrador' : 'Reparto'}</p>
                       </td>
-                      <td className="py-3.5">
-                        <p className="text-xs font-semibold text-gray-800">
-                          {cliente?.nombre || 'Cliente Final'}
-                        </p>
-                        <p className={`text-[10px] ${esLocal ? 'text-blue-400' : 'text-gray-400'} font-medium`}>
-                          {esLocal ? 'Venta en local' : 'Entrega a domicilio'}
-                        </p>
-                      </td>
-                      <td className="py-3.5 text-right">
-                        <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-lg">
-                          {formatCurrency(v.total)}
-                        </span>
+                      <td className="py-3 text-right">
+                        <span className="text-xs font-black text-gray-800 block mb-1">{formatCurrency(v.total)}</span>
+                        {formaPago === 'Efectivo' && <span className="inline-flex items-center gap-1 text-[8px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded uppercase"><Banknote size={9}/> Efectivo</span>}
+                        {formaPago === 'Transferencia' && <span className="inline-flex items-center gap-1 text-[8px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded uppercase"><ArrowRightLeft size={9}/> Transf.</span>}
+                        {formaPago === 'QR' && <span className="inline-flex items-center gap-1 text-[8px] font-bold text-fuchsia-600 bg-fuchsia-50 px-1.5 py-0.5 rounded uppercase"><QrCode size={9}/> QR</span>}
+                        {formaPago === 'N/A' && <span className="inline-flex items-center gap-1 text-[8px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase">Sin Dato</span>}
                       </td>
                     </tr>
                   );
                 })}
 
                 {ventasPaginadas.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="py-10 text-center text-sm text-gray-300">
-                      Sin operaciones en este período.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={3} className="py-8 text-center text-xs font-medium text-gray-400">Sin operaciones en este período.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
 
-          {/* Controles de Paginación */}
+          {/* Paginación */}
           {totalPaginas > 1 && (
-            <div className="border-t border-gray-100 p-4 flex items-center justify-between bg-gray-50/50 rounded-b-2xl">
-              <span className="text-xs text-gray-400 font-medium">
-                Página {paginaActual} de {totalPaginas}
-              </span>
+            <div className="border-t border-gray-100 p-3 flex items-center justify-between bg-gray-50/50 rounded-b-2xl">
+              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Pág. {paginaActual} / {totalPaginas}</span>
               <div className="flex gap-2">
-                <button
-                  onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
-                  disabled={paginaActual === 1}
-                  className="p-1.5 rounded-lg border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <button
-                  onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
-                  disabled={paginaActual === totalPaginas}
-                  className="p-1.5 rounded-lg border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  <ChevronRight size={16} />
-                </button>
+                <button onClick={() => setPaginaActual(p => Math.max(1, p - 1))} disabled={paginaActual === 1} className="p-1 rounded-lg border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50"><ChevronLeft size={14} /></button>
+                <button onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))} disabled={paginaActual === totalPaginas} className="p-1 rounded-lg border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50"><ChevronRight size={14} /></button>
               </div>
             </div>
           )}
