@@ -37,26 +37,6 @@ const formatCurrency = (val) =>
 
 // ── Componentes reutilizables ──────────────────────────────────────────────
 
-// KpiCard más compacta
-function KpiCard({ icon: Icon, iconBg, iconColor, label, value, footnote, footnoteColor = 'text-gray-400' }) {
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-col justify-between gap-3 shadow-sm">
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${iconBg}`}>
-        <Icon size={18} className={iconColor} />
-      </div>
-      <div>
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{label}</p>
-        <p className="text-3xl font-black text-gray-800 tracking-tight">{value}</p>
-      </div>
-      {footnote && (
-        <p className={`text-[10px] font-bold ${footnoteColor} flex items-center gap-1`}>
-          {footnote}
-        </p>
-      )}
-    </div>
-  );
-}
-
 function BarItem({ label, val, total, color, icon }) {
   const pct = total > 0 ? (val / total) * 100 : 0;
   return (
@@ -124,10 +104,9 @@ export default function Dashboard() {
     let ventasTotales = 0;
     let countBidones = 0, countDispensers = 0, countPromos = 0;
     
-    // Contadores por Forma de Pago
-    let ingresosEfectivo = 0;
-    let ingresosTransferencia = 0;
-    let ingresosQR = 0;
+    // Contadores Divididos: Local vs Reparto
+    let localEfectivo = 0, localTransferencia = 0, localQR = 0;
+    let repartoEfectivo = 0, repartoTransferencia = 0, repartoQR = 0;
 
     ventas.forEach((venta) => {
       const fechaVentaStr = getLocalDataString(venta.fecha);
@@ -140,18 +119,23 @@ export default function Dashboard() {
           ? fechaVentaStr >= fechaInicio && fechaVentaStr <= fechaFin
           : fechaVentaStr === fechaSeleccionada;
 
-      // SÍ, Todo se actualiza basado en el filtro de fecha
       if (entraEnFiltro) {
         ingresosFiltrados += totalVenta;
         ventasTotales++;
         
-        if (venta.id_cliente === ID_CLIENTE_LOCAL) ingresosLocal += totalVenta;
-        else ingresosVisitas += totalVenta;
+        const esLocal = venta.id_cliente === ID_CLIENTE_LOCAL;
 
-        // Sumamos según forma de pago para ese período
-        if (formaPago === 'Efectivo') ingresosEfectivo += totalVenta;
-        else if (formaPago === 'Transferencia') ingresosTransferencia += totalVenta;
-        else if (formaPago === 'QR') ingresosQR += totalVenta;
+        if (esLocal) {
+          ingresosLocal += totalVenta;
+          if (formaPago === 'Efectivo') localEfectivo += totalVenta;
+          else if (formaPago === 'Transferencia') localTransferencia += totalVenta;
+          else if (formaPago === 'QR') localQR += totalVenta;
+        } else {
+          ingresosVisitas += totalVenta;
+          if (formaPago === 'Efectivo') repartoEfectivo += totalVenta;
+          else if (formaPago === 'Transferencia') repartoTransferencia += totalVenta;
+          else if (formaPago === 'QR') repartoQR += totalVenta;
+        }
 
         const producto = catalogo.find(p => p.id_producto.toString() === venta.id_producto.toString());
         if (producto) {
@@ -166,7 +150,8 @@ export default function Dashboard() {
       ingresosFiltrados, ingresosLocal, ingresosVisitas,
       ventasTotales, countBidones, countDispensers, countPromos,
       totalArticulos: countBidones + countDispensers + countPromos || 1,
-      ingresosEfectivo, ingresosTransferencia, ingresosQR
+      localEfectivo, localTransferencia, localQR,
+      repartoEfectivo, repartoTransferencia, repartoQR
     };
   }, [ventas, catalogo, tipoFiltro, fechaInicio, fechaFin, fechaSeleccionada]);
 
@@ -225,57 +210,103 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── KPIs PRIMERA FILA (TODO EN UNA LÍNEA) ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {/* ── KPIs PRIMERA FILA (5 COLUMNAS EN PANTALLAS GRANDES) ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         
-        {/* 1. Recaudación Global */}
-        <div className="bg-blue-600 rounded-2xl p-5 text-white relative overflow-hidden shadow-sm flex flex-col justify-between">
+        {/* 1. Recaudación Global (Ocupa 2 espacios -> Súper Grande) */}
+        <div className="lg:col-span-2 bg-blue-600 rounded-2xl p-6 text-white relative overflow-hidden shadow-sm flex flex-col justify-between">
           <div className="relative z-10">
-            <p className="text-[10px] font-bold text-blue-200 uppercase tracking-widest mb-0.5">
-              {tipoFiltro === 'dia' ? 'Recaudación del día' : 'Recaudación período'}
+            <p className="text-xs font-bold text-blue-200 uppercase tracking-widest mb-1">
+              {tipoFiltro === 'dia' ? 'Total del día' : 'Total del período'}
             </p>
-            <p className="text-3xl font-black tracking-tight">{formatCurrency(metricas.ingresosFiltrados)}</p>
+            <p className="text-4xl lg:text-5xl font-black tracking-tight">{formatCurrency(metricas.ingresosFiltrados)}</p>
           </div>
-          <div className="grid grid-cols-2 gap-2 border-t border-white/10 pt-3 mt-4 relative z-10">
+          <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-4 mt-6 relative z-10">
             <div>
-              <p className="text-[9px] text-blue-200 uppercase font-bold flex items-center gap-1"><Store size={10} /> Local</p>
-              <p className="text-sm font-semibold">{formatCurrency(metricas.ingresosLocal)}</p>
+              <p className="text-[10px] text-blue-200 uppercase font-bold flex items-center gap-1"><Store size={12} /> Local</p>
+              <p className="text-base font-semibold">{formatCurrency(metricas.ingresosLocal)}</p>
             </div>
             <div>
-              <p className="text-[9px] text-blue-200 uppercase font-bold flex items-center gap-1"><Truck size={10} /> Reparto</p>
-              <p className="text-sm font-semibold">{formatCurrency(metricas.ingresosVisitas)}</p>
+              <p className="text-[10px] text-blue-200 uppercase font-bold flex items-center gap-1"><Truck size={12} /> Reparto</p>
+              <p className="text-base font-semibold">{formatCurrency(metricas.ingresosVisitas)}</p>
             </div>
           </div>
-          <DollarSign className="absolute -right-4 -bottom-4 w-28 h-28 text-white/10 pointer-events-none" />
+          <DollarSign className="absolute -right-6 -bottom-6 w-44 h-44 text-white/10 pointer-events-none" />
         </div>
 
-        {/* 2. Operaciones (KpiCard Compacta) */}
-        <KpiCard 
-          icon={Calendar} iconBg="bg-blue-50" iconColor="text-blue-500" 
-          label="Operaciones" value={metricas.ventasTotales} 
-          footnote={<><TrendingUp size={11} /> Ventas confirmadas</>} footnoteColor="text-emerald-500" 
-        />
+        {/* 2. Operaciones + Ticket Promedio Juntos (Ocupa 1 espacio) */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-col justify-between shadow-sm">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-blue-50">
+                <Calendar size={18} className="text-blue-500" />
+              </div>
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg flex items-center gap-1">
+                <TrendingUp size={11} /> Ventas confirmadas
+              </span>
+            </div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Operaciones</p>
+            <p className="text-3xl font-black text-gray-800 tracking-tight">{metricas.ventasTotales}</p>
+          </div>
+          
+          {/* Ticket Promedio Integrado Abajo */}
+          <div className="border-t border-gray-100 pt-3 mt-3">
+            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1 mb-0.5">
+              <ClipboardList size={10} className="text-amber-500" /> Ticket Promedio
+            </p>
+            <p className="text-sm font-black text-gray-800">
+              {metricas.ventasTotales > 0 ? formatCurrency(metricas.ingresosFiltrados / metricas.ventasTotales) : '$0'}
+            </p>
+          </div>
+        </div>
 
-        {/* 3. Desglose de Caja (Ocupa 2 columnas para quedar en línea) */}
-        <div className="md:col-span-2 bg-white rounded-2xl border border-gray-100 p-5 flex flex-col shadow-sm">
+        {/* 3. Desglose de Caja Dividido (Ocupa 2 espacios) */}
+        <div className="lg:col-span-2 md:col-span-2 bg-white rounded-2xl border border-gray-100 p-5 flex flex-col shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center"><PieChart size={14} className="text-emerald-500" /></div>
             <h2 className="text-xs font-bold text-gray-700 uppercase tracking-widest">Desglose de Caja</h2>
           </div>
           
-          <div className="grid grid-cols-3 gap-3 flex-grow">
-            <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex flex-col justify-center">
-              <p className="text-[9px] text-gray-400 uppercase font-bold mb-1 flex items-center gap-1"><Banknote size={11} className="text-emerald-500" /> Efectivo</p>
-              <p className="text-lg font-black text-gray-800">{formatCurrency(metricas.ingresosEfectivo)}</p>
+          <div className="flex flex-col gap-3 flex-grow">
+            
+            {/* Fila Local */}
+            <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5 flex flex-col justify-center">
+              <p className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 flex items-center gap-1"><Store size={12}/> Caja Local</p>
+              <div className="grid grid-cols-3 gap-2 divide-x divide-gray-200">
+                <div className="px-1">
+                  <p className="text-[9px] text-gray-400 uppercase font-bold mb-0.5 flex items-center gap-1"><Banknote size={10} className="text-emerald-500"/> Efe.</p>
+                  <p className="text-xs md:text-sm font-black text-gray-800">{formatCurrency(metricas.localEfectivo)}</p>
+                </div>
+                <div className="px-2">
+                  <p className="text-[9px] text-gray-400 uppercase font-bold mb-0.5 flex items-center gap-1"><ArrowRightLeft size={10} className="text-blue-500"/> Transf.</p>
+                  <p className="text-xs md:text-sm font-black text-gray-800">{formatCurrency(metricas.localTransferencia)}</p>
+                </div>
+                <div className="px-2">
+                  <p className="text-[9px] text-gray-400 uppercase font-bold mb-0.5 flex items-center gap-1"><QrCode size={10} className="text-fuchsia-500"/> QR</p>
+                  <p className="text-xs md:text-sm font-black text-gray-800">{formatCurrency(metricas.localQR)}</p>
+                </div>
+              </div>
             </div>
-            <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex flex-col justify-center">
-              <p className="text-[9px] text-gray-400 uppercase font-bold mb-1 flex items-center gap-1"><ArrowRightLeft size={11} className="text-blue-500" /> Transf.</p>
-              <p className="text-lg font-black text-gray-800">{formatCurrency(metricas.ingresosTransferencia)}</p>
+
+            {/* Fila Reparto */}
+            <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5 flex flex-col justify-center">
+              <p className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 flex items-center gap-1"><Truck size={12}/> Caja Reparto</p>
+              <div className="grid grid-cols-3 gap-2 divide-x divide-gray-200">
+                <div className="px-1">
+                  <p className="text-[9px] text-gray-400 uppercase font-bold mb-0.5 flex items-center gap-1"><Banknote size={10} className="text-emerald-500"/> Efe.</p>
+                  <p className="text-xs md:text-sm font-black text-gray-800">{formatCurrency(metricas.repartoEfectivo)}</p>
+                </div>
+                <div className="px-2">
+                  <p className="text-[9px] text-gray-400 uppercase font-bold mb-0.5 flex items-center gap-1"><ArrowRightLeft size={10} className="text-blue-500"/> Transf.</p>
+                  <p className="text-xs md:text-sm font-black text-gray-800">{formatCurrency(metricas.repartoTransferencia)}</p>
+                </div>
+                <div className="px-2">
+                  <p className="text-[9px] text-gray-400 uppercase font-bold mb-0.5 flex items-center gap-1"><QrCode size={10} className="text-fuchsia-500"/> QR</p>
+                  <p className="text-xs md:text-sm font-black text-gray-800">{formatCurrency(metricas.repartoQR)}</p>
+                </div>
+              </div>
             </div>
-            <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex flex-col justify-center">
-              <p className="text-[9px] text-gray-400 uppercase font-bold mb-1 flex items-center gap-1"><QrCode size={11} className="text-fuchsia-500" /> QR</p>
-              <p className="text-lg font-black text-gray-800">{formatCurrency(metricas.ingresosQR)}</p>
-            </div>
+
           </div>
         </div>
 

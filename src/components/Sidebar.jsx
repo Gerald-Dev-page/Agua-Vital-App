@@ -5,7 +5,7 @@ import {
   LayoutDashboard,
   Droplet,
   Package,
-  Users,
+  Wallet,
   Store // <-- Agregamos el ícono para el local
 } from 'lucide-react';
 
@@ -15,7 +15,7 @@ export default function Sidebar({ currentPage, setCurrentPage }) {
     { id: 'ventas-local', label: 'Ventas Local', Icon: Store }, // <-- Nueva vista
     { id: 'ventas',       label: 'Ventas',       Icon: Droplet },
     { id: 'productos',    label: 'Productos',    Icon: Package },
-    { id: 'clientes',     label: 'Clientes',     Icon: Users },
+    { id: 'caja',     label: 'Caja',     Icon: Wallet },
   ];
 
   return (

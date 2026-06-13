@@ -4,7 +4,7 @@ import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import Ventas from "./pages/Ventas";
 import Productos from "./pages/Productos";
-import Clientes from "./pages/Clientes";
+import Caja from "./pages/Caja";
 import VentasLocal from './pages/VentasLocal'; // <-- Agregá esto
 import "./styles/global.css";
 
@@ -16,7 +16,7 @@ function App() {
       case "dashboard":  return <Dashboard />;
       case "ventas":     return <Ventas />;
       case "productos":  return <Productos />;
-      case "clientes":   return <Clientes />;
+     case "caja":         return <Caja />
       case 'ventas-local': return <VentasLocal />;
       default:           return <Dashboard />;
     }
