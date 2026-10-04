@@ -22,6 +22,20 @@ const formatFechaPantalla = (fechaRaw) => {
   return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
 };
 
+const formatHoraPantalla = (fechaRaw) => {
+  if (!fechaRaw) return '';
+  if (typeof fechaRaw === 'string' && fechaRaw.includes(' ')) {
+    const timePart = fechaRaw.split(' ')[1];
+    if (timePart) {
+      const [hh, mm] = timePart.split(':');
+      return `${hh}:${mm} hs`;
+    }
+  }
+  const d = new Date(fechaRaw);
+  if (isNaN(d.getTime())) return '';
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} hs`;
+};
+
 const getLocalDataString = (date) => {
   if (!date) return '';
   if (typeof date === 'string' && date.includes(' ') && !date.includes('T')) {
@@ -34,8 +48,6 @@ const getLocalDataString = (date) => {
 
 const formatCurrency = (val) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(val);
-
-// ── Componentes reutilizables ──────────────────────────────────────────────
 
 function BarItem({ label, val, total, color, icon }) {
   const pct = total > 0 ? (val / total) * 100 : 0;
@@ -56,8 +68,6 @@ function BarItem({ label, val, total, color, icon }) {
     </div>
   );
 }
-
-// ── Página principal ───────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
@@ -98,13 +108,11 @@ export default function Dashboard() {
     setPaginaActual(1);
   }, [tipoFiltro, fechaSeleccionada, fechaInicio, fechaFin]);
 
-  // ── Cálculo de métricas dinámicas ──
   const metricas = useMemo(() => {
     let ingresosFiltrados = 0, ingresosLocal = 0, ingresosVisitas = 0;
     let ventasTotales = 0;
     let countBidones = 0, countDispensers = 0, countPromos = 0;
     
-    // Contadores Divididos: Local vs Reparto
     let localEfectivo = 0, localTransferencia = 0, localQR = 0;
     let repartoEfectivo = 0, repartoTransferencia = 0, repartoQR = 0;
 
@@ -177,7 +185,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-8 md:px-10 pb-24">
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -210,10 +218,10 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── KPIs PRIMERA FILA (5 COLUMNAS EN PANTALLAS GRANDES) ── */}
+      {/* KPIs PRIMERA FILA */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         
-        {/* 1. Recaudación Global (Ocupa 2 espacios -> Súper Grande) */}
+        {/* Recaudación Global */}
         <div className="lg:col-span-2 bg-blue-600 rounded-2xl p-6 text-white relative overflow-hidden shadow-sm flex flex-col justify-between">
           <div className="relative z-10">
             <p className="text-xs font-bold text-blue-200 uppercase tracking-widest mb-1">
@@ -234,7 +242,7 @@ export default function Dashboard() {
           <DollarSign className="absolute -right-6 -bottom-6 w-44 h-44 text-white/10 pointer-events-none" />
         </div>
 
-        {/* 2. Operaciones + Ticket Promedio Juntos (Ocupa 1 espacio) */}
+        {/* Operaciones + Ticket Promedio */}
         <div className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-col justify-between shadow-sm">
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -249,7 +257,6 @@ export default function Dashboard() {
             <p className="text-3xl font-black text-gray-800 tracking-tight">{metricas.ventasTotales}</p>
           </div>
           
-          {/* Ticket Promedio Integrado Abajo */}
           <div className="border-t border-gray-100 pt-3 mt-3">
             <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1 mb-0.5">
               <ClipboardList size={10} className="text-amber-500" /> Ticket Promedio
@@ -260,7 +267,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 3. Desglose de Caja Dividido (Ocupa 2 espacios) */}
+        {/* Desglose de Caja */}
         <div className="lg:col-span-2 md:col-span-2 bg-white rounded-2xl border border-gray-100 p-5 flex flex-col shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center"><PieChart size={14} className="text-emerald-500" /></div>
@@ -268,8 +275,7 @@ export default function Dashboard() {
           </div>
           
           <div className="flex flex-col gap-3 flex-grow">
-            
-            {/* Fila Local */}
+            {/* Local */}
             <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5 flex flex-col justify-center">
               <p className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 flex items-center gap-1"><Store size={12}/> Caja Local</p>
               <div className="grid grid-cols-3 gap-2 divide-x divide-gray-200">
@@ -288,7 +294,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Fila Reparto */}
+            {/* Reparto */}
             <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5 flex flex-col justify-center">
               <p className="text-[10px] text-gray-500 uppercase font-bold mb-1.5 flex items-center gap-1"><Truck size={12}/> Caja Reparto</p>
               <div className="grid grid-cols-3 gap-2 divide-x divide-gray-200">
@@ -306,16 +312,15 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-
           </div>
         </div>
 
       </div>
 
-      {/* ── SEGUNDA FILA (Productos y Tabla) ── */}
+      {/* SEGUNDA FILA */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {/* Distribución compacta */}
+        {/* Distribución envases */}
         <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
           <h2 className="text-xs font-bold text-gray-700 uppercase tracking-widest flex items-center gap-2 mb-5">
             <Droplet size={14} className="text-blue-500" /> Distribución de envases
@@ -327,7 +332,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Tabla de ventas */}
+        {/* Tabla de operaciones */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 flex flex-col shadow-sm">
           <div className="p-5 pb-0 flex items-center justify-between mb-3">
             <h2 className="text-xs font-bold text-gray-700 uppercase tracking-widest flex items-center gap-2">
@@ -340,7 +345,7 @@ export default function Dashboard() {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-gray-100">
-                  <th className="pb-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Fecha</th>
+                  <th className="pb-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Fecha / Hora</th>
                   <th className="pb-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest">Cliente / Zona</th>
                   <th className="pb-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest text-right">Monto / Pago</th>
                 </tr>
@@ -353,7 +358,11 @@ export default function Dashboard() {
                   
                   return (
                     <tr key={v.id_venta || i} className="hover:bg-gray-50/60 transition-colors">
-                      <td className="py-3 text-xs text-gray-500 font-medium">{formatFechaPantalla(v.fecha)}</td>
+                      {/* Fecha y Hora apiladas */}
+                      <td className="py-3">
+                        <p className="text-xs font-bold text-gray-800">{formatFechaPantalla(v.fecha)}</p>
+                        <p className="text-[10px] text-gray-400 font-medium mt-0.5">{formatHoraPantalla(v.fecha)}</p>
+                      </td>
                       <td className="py-3">
                         <p className="text-xs font-bold text-gray-800">{cliente?.nombre || 'Cliente Casa'}</p>
                         <p className={`text-[9px] ${esLocal ? 'text-blue-500' : 'text-amber-500'} font-bold uppercase mt-0.5`}>{esLocal ? 'Mostrador' : 'Reparto'}</p>
