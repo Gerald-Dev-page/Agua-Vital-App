@@ -111,7 +111,13 @@ export default function Dashboard() {
   const metricas = useMemo(() => {
     let ingresosFiltrados = 0, ingresosLocal = 0, ingresosVisitas = 0;
     let ventasTotales = 0;
+    
+    // Contadores de Operaciones (Originales)
     let countBidones = 0, countDispensers = 0, countPromos = 0;
+    
+    // Contadores de Envases Reales (Nuevos para Litraje)
+    let local20L = 0, local12L = 0;
+    let reparto20L = 0, reparto12L = 0;
     
     let localEfectivo = 0, localTransferencia = 0, localQR = 0;
     let repartoEfectivo = 0, repartoTransferencia = 0, repartoQR = 0;
@@ -122,15 +128,13 @@ export default function Dashboard() {
       const cantidad = parseInt(venta.cantidad) || 0;
       const formaPago = venta.forma_pago || 'No especificada'; 
 
-      const entraEnFiltro =
-        tipoFiltro === 'rango'
+      const entraEnFiltro = tipoFiltro === 'rango'
           ? fechaVentaStr >= fechaInicio && fechaVentaStr <= fechaFin
           : fechaVentaStr === fechaSeleccionada;
 
       if (entraEnFiltro) {
         ingresosFiltrados += totalVenta;
         ventasTotales++;
-        
         const esLocal = venta.id_cliente === ID_CLIENTE_LOCAL;
 
         if (esLocal) {
@@ -147,16 +151,42 @@ export default function Dashboard() {
 
         const producto = catalogo.find(p => p.id_producto.toString() === venta.id_producto.toString());
         if (producto) {
+          const nombre = producto.nombre.toLowerCase();
+          
+          // 1. Conteo de Operaciones
           if (producto.tipo === 'Bidón') countBidones += cantidad;
           else if (producto.tipo === 'Dispenser') countDispensers += cantidad;
           else if (producto.tipo === 'Promo') countPromos += cantidad;
+
+          // 2. Conteo Volumétrico (Físico) de Envases
+          if (producto.tipo === 'Bidón' || producto.tipo === 'Promo') {
+            // Detectamos si es una promo 2x, 3x, 4x
+            let multiplicador = 1;
+            if (nombre.includes('2x')) multiplicador = 2;
+            else if (nombre.includes('3x')) multiplicador = 3;
+            else if (nombre.includes('4x')) multiplicador = 4;
+            
+            const envasesReales = cantidad * multiplicador;
+
+            // Separamos por Litraje y Zona
+            if (nombre.includes('20l')) {
+              if (esLocal) local20L += envasesReales;
+              else reparto20L += envasesReales;
+            } else if (nombre.includes('12l')) {
+              if (esLocal) local12L += envasesReales;
+              else reparto12L += envasesReales;
+            }
+          }
         }
       }
     });
 
+    const totalBidonesReales = local20L + local12L + reparto20L + reparto12L;
+
     return {
       ingresosFiltrados, ingresosLocal, ingresosVisitas,
       ventasTotales, countBidones, countDispensers, countPromos,
+      local20L, local12L, reparto20L, reparto12L, totalBidonesReales,
       totalArticulos: countBidones + countDispensers + countPromos || 1,
       localEfectivo, localTransferencia, localQR,
       repartoEfectivo, repartoTransferencia, repartoQR
@@ -314,21 +344,43 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-
       </div>
 
       {/* SEGUNDA FILA */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {/* Distribución envases */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+        {/* Distribución Híbrida */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm overflow-y-auto max-h-[500px]">
           <h2 className="text-xs font-bold text-gray-700 uppercase tracking-widest flex items-center gap-2 mb-5">
-            <Droplet size={14} className="text-blue-500" /> Distribución de envases
+            <Droplet size={14} className="text-blue-500" /> Métricas de Envases
           </h2>
-          <div className="space-y-4">
-            <BarItem label="Bidones" val={metricas.countBidones} total={metricas.totalArticulos} color="bg-blue-500" icon={<Droplet size={10}/>} />
+          
+          {/* Operaciones de Venta */}
+          <div className="mb-6 space-y-3">
+            <p className="text-[10px] text-gray-500 uppercase font-bold mb-2">Operaciones Registradas</p>
+            <BarItem label="Bidones (Sueltos)" val={metricas.countBidones} total={metricas.totalArticulos} color="bg-blue-500" icon={<Droplet size={10}/>} />
+            <BarItem label="Promos (Combos)" val={metricas.countPromos} total={metricas.totalArticulos} color="bg-amber-400" icon={<Star size={10}/>} />
             <BarItem label="Dispensers" val={metricas.countDispensers} total={metricas.totalArticulos} color="bg-cyan-400" icon={<GlassWater size={10}/>} />
-            <BarItem label="Promos" val={metricas.countPromos} total={metricas.totalArticulos} color="bg-amber-400" icon={<Star size={10}/>} />
+          </div>
+
+          <div className="border-t border-gray-100 pt-5 space-y-5">
+            {/* Movimiento Real 20L */}
+            <div>
+              <p className="text-[10px] text-gray-500 uppercase font-bold mb-2">Volumen Real: 20 Litros</p>
+              <div className="space-y-2">
+                <BarItem label="Local (20L)" val={metricas.local20L} total={metricas.totalBidonesReales} color="bg-blue-600" icon={<Store size={10}/>} />
+                <BarItem label="Reparto (20L)" val={metricas.reparto20L} total={metricas.totalBidonesReales} color="bg-blue-400" icon={<Truck size={10}/>} />
+              </div>
+            </div>
+
+            {/* Movimiento Real 12L */}
+            <div>
+              <p className="text-[10px] text-gray-500 uppercase font-bold mb-2">Volumen Real: 12 Litros</p>
+              <div className="space-y-2">
+                <BarItem label="Local (12L)" val={metricas.local12L} total={metricas.totalBidonesReales} color="bg-cyan-600" icon={<Store size={10}/>} />
+                <BarItem label="Reparto (12L)" val={metricas.reparto12L} total={metricas.totalBidonesReales} color="bg-cyan-400" icon={<Truck size={10}/>} />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -358,7 +410,6 @@ export default function Dashboard() {
                   
                   return (
                     <tr key={v.id_venta || i} className="hover:bg-gray-50/60 transition-colors">
-                      {/* Fecha y Hora apiladas */}
                       <td className="py-3">
                         <p className="text-xs font-bold text-gray-800">{formatFechaPantalla(v.fecha)}</p>
                         <p className="text-[10px] text-gray-400 font-medium mt-0.5">{formatHoraPantalla(v.fecha)}</p>
